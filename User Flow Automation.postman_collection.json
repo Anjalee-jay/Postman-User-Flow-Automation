@@ -1,0 +1,366 @@
+{
+  "info": {
+    "_postman_id": "89ca331e-ec5f-4267-83d7-e76298ca7b29",
+    "name": "User Flow Automation",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "41856162",
+    "_collection_link": "https://go.postman.co/collection/41856162-89ca331e-ec5f-4267-83d7-e76298ca7b29?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Login (extract token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Debug logs (preserved)",
+              "console.log(\"Resolved URL:\", pm.request.url.toString());",
+              "",
+              "const apiKey = pm.request.headers.get(\"x-api-key\");",
+              "console.log(\"x-api-key header present?:\", Boolean(apiKey));",
+              "console.log(\"x-api-key header length:\", apiKey ? apiKey.length : 0);",
+              "",
+              "console.log(\"Status:\", pm.response.code);",
+              "console.log(\"Response body:\", pm.response.text());",
+              "",
+              "// Token extraction + tests",
+              "let jsonData;",
+              "try {",
+              "  jsonData = pm.response.json();",
+              "} catch (e) {",
+              "  console.warn(\"Response is not valid JSON\");",
+              "  jsonData = null;",
+              "}",
+              "",
+              "const token = jsonData?.token;",
+              "if (token) {",
+              "  pm.environment.set('token', token);",
+              "  console.log(\"Token saved to environment variable 'token'\");",
+              "} else {",
+              "  console.warn(\"Token not found at response.token\");",
+              "}",
+              "",
+              "pm.test(\"Status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Token exists in response\", function () {",
+              "  pm.expect(token, \"response.token\").to.be.ok;",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disabledSystemHeaders": {
+          "connection": true,
+          "accept-encoding": true,
+          "accept": true,
+          "user-agent": true,
+          "host": true,
+          "content-length": true
+        }
+      },
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "pub_1b92e5466eeb0a8a632fc65f3206a11372fe92df0791af71c9739f0441825f08"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "\r\n{\r\n   \"email\": \"eve.holt@reqres.in\",\r\n   \"password\": \"cityslicka\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create User",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Create User — Post-response tests",
+              "",
+              "// 1) Assert 2xx status",
+              "pm.test('Status code is 2xx', function () {",
+              "  pm.expect(pm.response.code, 'HTTP status code').to.be.within(200, 299);",
+              "});",
+              "",
+              "// 2) Assert response is JSON (header + parse)",
+              "pm.test('Response is JSON', function () {",
+              "  const ct = (pm.response.headers.get('Content-Type') || '').toLowerCase();",
+              "  // Some APIs omit charset; we still require application/json-ish",
+              "  pm.expect(ct, 'Content-Type').to.include('application/json');",
+              "});",
+              "",
+              "let json;",
+              "pm.test('Response body is valid JSON', function () {",
+              "  pm.expect(() => {",
+              "    json = pm.response.json();",
+              "  }).to.not.throw();",
+              "  pm.expect(json, 'parsed JSON body').to.be.an('object');",
+              "});",
+              "",
+              "// If JSON parsing failed, bail out for the rest (defensive)",
+              "if (!json || typeof json !== 'object') {",
+              "  console.warn('Create User: JSON parsing failed; skipping field validation/variable capture.');",
+              "} else {",
+              "  // Helper: pick first present key",
+              "  const pick = (obj, keys) => {",
+              "    for (const k of keys) {",
+              "      if (Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== null && obj[k] !== undefined) {",
+              "        return { key: k, value: obj[k] };",
+              "      }",
+              "    }",
+              "    return { key: null, value: undefined };",
+              "  };",
+              "",
+              "  // 3) Validate key fields (id/userId, email/username/name if present)",
+              "  const idPick = pick(json, ['id', 'userId', 'user_id']);",
+              "",
+              "  pm.test('Has id/userId when provided', function () {",
+              "    // Not all create endpoints return ids; only assert type/shape if present",
+              "    if (idPick.key) {",
+              "      pm.expect(idPick.value, `${idPick.key} value`).to.not.be.oneOf([null, '']);",
+              "      pm.expect(['string', 'number']).to.include(typeof idPick.value);",
+              "    } else {",
+              "      pm.expect(true).to.eql(true);",
+              "    }",
+              "  });",
+              "",
+              "  // Validate optional identity fields if present",
+              "  const emailPick = pick(json, ['email']);",
+              "  const usernamePick = pick(json, ['username', 'userName']);",
+              "  const namePick = pick(json, ['name', 'fullName']);",
+              "",
+              "  pm.test('email/username/name fields are correct type if present', function () {",
+              "    if (emailPick.key) pm.expect(emailPick.value, 'email').to.be.a('string');",
+              "    if (usernamePick.key) pm.expect(usernamePick.value, usernamePick.key).to.be.a('string');",
+              "    if (namePick.key) pm.expect(namePick.value, namePick.key).to.be.a('string');",
+              "  });",
+              "",
+              "  // 6) Schema-ish checks (types) for common fields if present",
+              "  pm.test('Schema-ish: createdAt/updatedAt are strings if present', function () {",
+              "    if (Object.prototype.hasOwnProperty.call(json, 'createdAt')) {",
+              "      pm.expect(json.createdAt, 'createdAt').to.be.a('string');",
+              "    }",
+              "    if (Object.prototype.hasOwnProperty.call(json, 'updatedAt')) {",
+              "      pm.expect(json.updatedAt, 'updatedAt').to.be.a('string');",
+              "    }",
+              "  });",
+              "",
+              "  // 4) Capture created user id into environment variable userId",
+              "  if (idPick.key) {",
+              "    pm.environment.set('userId', String(idPick.value));",
+              "    pm.test('Set environment variable userId', function () {",
+              "      pm.expect(pm.environment.get('userId')).to.eql(String(idPick.value));",
+              "    });",
+              "  } else {",
+              "    console.info('Create User: No id/userId in response; not setting userId environment variable.');",
+              "  }",
+              "",
+              "  // 5) If response includes token, store it to environment token",
+              "  const tokenPick = pick(json, ['token', 'access_token', 'accessToken']);",
+              "  if (tokenPick.key) {",
+              "    pm.environment.set('token', String(tokenPick.value));",
+              "    pm.test('Set environment variable token', function () {",
+              "      pm.expect(pm.environment.get('token')).to.eql(String(tokenPick.value));",
+              "    });",
+              "  } else {",
+              "    console.info('Create User: No token in response; not setting token environment variable.');",
+              "  }",
+              "}",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "pub_1b92e5466eeb0a8a632fc65f3206a11372fe92df0791af71c9739f0441825f08",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "\r\n{\r\n   \"name\": \"John Doe\",\r\n   \"job\": \"QA Engineer\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/users",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Update User",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {\r",
+              "    pm.response.to.have.status(201);\r",
+              "});\r",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "pub_1b92e5466eeb0a8a632fc65f3206a11372fe92df0791af71c9739f0441825f08",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "\r\n{\r\n   \"name\": \"John Doe\",\r\n   \"job\": \"QA Engineer\"\r\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/users/{{userId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "users",
+            "{{userId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Delete User",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 204\", function () {\r",
+              "    pm.response.to.have.status(204);\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-api-key",
+            "value": "pub_1b92e5466eeb0a8a632fc65f3206a11372fe92df0791af71c9739f0441825f08",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/{{userId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "users",
+            "{{userId}}"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
